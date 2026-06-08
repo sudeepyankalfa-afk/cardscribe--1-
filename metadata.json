@@ -1,0 +1,6 @@
+{
+  "name": "CardScribe",
+  "description": "An offline-first business card scanner application that parses images into structured contact entries using local Tesseract.js OCR or high-accuracy server-side Cloud AI.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
