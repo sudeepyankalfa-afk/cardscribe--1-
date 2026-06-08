@@ -59,10 +59,7 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
     window.addEventListener('online', updateOnline);
     window.addEventListener('offline', updateOnline);
     
-    // Default to cloud if online on start
-    if (navigator.onLine) {
-      setOcrEngineMode('cloud');
-    }
+
 
     return () => {
       window.removeEventListener('online', updateOnline);
