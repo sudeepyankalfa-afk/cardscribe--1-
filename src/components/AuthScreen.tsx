@@ -199,7 +199,7 @@ export function AuthScreen() {
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
-                    placeholder="e.g. Sudeep Yankalfa"
+                    placeholder="e.g. User Yankalfa"
                     className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-205 dark:border-slate-800 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 bg-transparent text-sm text-slate-850 dark:text-slate-100"
                     id="signup-input-fullname"
                   />
