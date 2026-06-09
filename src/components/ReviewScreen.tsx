@@ -49,6 +49,8 @@ export function ReviewScreen({ onNavigate, viewingSavedRecord }: ReviewScreenPro
         addresses: viewingSavedRecord.addresses || [],
         websites: viewingSavedRecord.websites || [],
         businessDomain: viewingSavedRecord.businessDomain || 'Other',
+        detectedLanguages: viewingSavedRecord.detectedLanguages || [],
+        addressComponents: viewingSavedRecord.addressComponents || [],
         confidenceMap: {
           fullName: 1.0,
           title: 1.0,
@@ -122,7 +124,9 @@ export function ReviewScreen({ onNavigate, viewingSavedRecord }: ReviewScreenPro
         websites: draft.websites.map(w => w.trim()).filter(Boolean),
         notes: viewingSavedRecord?.notes || '',
         thumbnailUrl: session?.thumbnailUrl || viewingSavedRecord?.thumbnailUrl,
-        businessDomain: draft.businessDomain || 'Other'
+        businessDomain: draft.businessDomain || 'Other',
+        detectedLanguages: draft.detectedLanguages || [],
+        addressComponents: draft.addressComponents || []
       };
 
       // Put to Local Dexie DB
@@ -507,6 +511,17 @@ export function ReviewScreen({ onNavigate, viewingSavedRecord }: ReviewScreenPro
                   </span>
                 </div>
 
+                {draft.detectedLanguages && draft.detectedLanguages.length > 0 && (
+                  <div className="px-6 py-2.5 bg-slate-50/60 dark:bg-slate-900/30 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center gap-2" id="multilingual-badge-bar">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Languages:</span>
+                    {draft.detectedLanguages.map((lang, idx) => (
+                      <span key={idx} className="inline-flex items-center text-xs font-semibold px-2.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900/40" id={`lang-tag-${idx}`}>
+                        🌐 {lang}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 <div className="p-6 space-y-6">
                   
                   {/* Single fields constraints (fullName, title, company) */}
@@ -789,33 +804,128 @@ export function ReviewScreen({ onNavigate, viewingSavedRecord }: ReviewScreenPro
                       <p className="text-xs text-slate-400 italic">No addresses detected.</p>
                     )}
 
-                    <div className="space-y-3" id="addresses-element-list">
-                      {draft.addresses.map((addr, idx) => (
-                        <div key={idx} className="flex items-center gap-2" id={`addr-item-wrap-${idx}`}>
-                          <input
-                            type="text"
-                            disabled={!isEditMode || isSaving}
-                            value={addr}
-                            onChange={(e) => updateDraftFieldArrayValue('addresses', idx, e.target.value)}
-                            className="flex-1 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-800 text-sm focus:ring-2 focus:ring-blue-105 focus:border-blue-500 bg-white outline-none"
-                            placeholder="123 Main St, Suite 100"
-                            aria-label={`Address index ${idx}`}
-                            id={`address-input-${idx}`}
-                          />
-                          {isEditMode && (
-                            <button
-                              type="button"
-                              onClick={() => removeDraftFieldArrayValue('addresses', idx)}
-                              className="p-2.5 rounded-lg border border-red-100 hover:bg-red-50 text-red-500 hover:border-red-200 dark:border-red-950/40 dark:hover:bg-red-950/20 transition-colors"
-                              style={{ width: 44, height: 44 }}
-                              title="Remove address"
-                              id={`address-remove-btn-${idx}`}
-                            >
-                              <X className="w-4 h-4 mx-auto" />
-                            </button>
-                          )}
-                        </div>
-                      ))}
+                    <div className="space-y-4" id="addresses-element-list">
+                      {draft.addresses.map((addr, idx) => {
+                        const comp = draft.addressComponents?.[idx] || {};
+                        return (
+                          <div key={idx} className="p-3 bg-slate-50/50 dark:bg-slate-900/10 border border-slate-200 dark:border-slate-800 rounded-lg space-y-3" id={`addr-item-wrap-${idx}`}>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                disabled={!isEditMode || isSaving}
+                                value={addr}
+                                onChange={(e) => updateDraftFieldArrayValue('addresses', idx, e.target.value)}
+                                className="flex-1 px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-805 text-sm focus:ring-2 focus:ring-blue-105 focus:border-blue-500 bg-white outline-none font-medium"
+                                placeholder="123 Main St, Suite 100"
+                                aria-label={`Address index ${idx}`}
+                                id={`address-input-${idx}`}
+                              />
+                              {isEditMode && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeDraftFieldArrayValue('addresses', idx)}
+                                  className="p-2.5 rounded-lg border border-red-100 hover:bg-red-50 text-red-500 hover:border-red-200 dark:border-red-950/40 dark:hover:bg-red-950/20 transition-colors flex-shrink-0"
+                                  style={{ width: 44, height: 44 }}
+                                  title="Remove address"
+                                  id={`address-remove-btn-${idx}`}
+                                >
+                                  <X className="w-4 h-4 mx-auto" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Granular components details */}
+                            <div className="pl-3 border-l-2 border-blue-500/30 dark:border-blue-500/20 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Parsed Address Structure</span>
+                                <span className="text-[9px] text-blue-600 dark:text-blue-400 font-bold bg-blue-50/55 dark:bg-blue-950/20 px-1.5 py-0.5 rounded border border-blue-100/30">Auto-Categorized</span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-450 block mb-0.5">Street Address</label>
+                                  <input
+                                    type="text"
+                                    disabled={!isEditMode || isSaving}
+                                    value={comp.street || ''}
+                                    onChange={(e) => {
+                                      const updatedComp = [...(draft.addressComponents || [])];
+                                      if (!updatedComp[idx]) updatedComp[idx] = {};
+                                      updatedComp[idx] = { ...updatedComp[idx], street: e.target.value };
+                                      updateDraftField('addressComponents', updatedComp);
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-xs text-slate-850 dark:text-slate-200 outline-none focus:border-blue-500"
+                                    placeholder="Street block, building, suite"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-450 block mb-0.5">City</label>
+                                  <input
+                                    type="text"
+                                    disabled={!isEditMode || isSaving}
+                                    value={comp.city || ''}
+                                    onChange={(e) => {
+                                      const updatedComp = [...(draft.addressComponents || [])];
+                                      if (!updatedComp[idx]) updatedComp[idx] = {};
+                                      updatedComp[idx] = { ...updatedComp[idx], city: e.target.value };
+                                      updateDraftField('addressComponents', updatedComp);
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-xs text-slate-850 dark:text-slate-200 outline-none focus:border-blue-500"
+                                    placeholder="City name"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-450 block mb-0.5">District / State</label>
+                                  <input
+                                    type="text"
+                                    disabled={!isEditMode || isSaving}
+                                    value={comp.district || ''}
+                                    onChange={(e) => {
+                                      const updatedComp = [...(draft.addressComponents || [])];
+                                      if (!updatedComp[idx]) updatedComp[idx] = {};
+                                      updatedComp[idx] = { ...updatedComp[idx], district: e.target.value };
+                                      updateDraftField('addressComponents', updatedComp);
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-xs text-slate-850 dark:text-slate-200 outline-none focus:border-blue-500"
+                                    placeholder="District, Sector, or State"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-450 block mb-0.5">Country</label>
+                                  <input
+                                    type="text"
+                                    disabled={!isEditMode || isSaving}
+                                    value={comp.country || ''}
+                                    onChange={(e) => {
+                                      const updatedComp = [...(draft.addressComponents || [])];
+                                      if (!updatedComp[idx]) updatedComp[idx] = {};
+                                      updatedComp[idx] = { ...updatedComp[idx], country: e.target.value };
+                                      updateDraftField('addressComponents', updatedComp);
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-xs text-slate-850 dark:text-slate-200 outline-none focus:border-blue-500"
+                                    placeholder="Country name"
+                                  />
+                                </div>
+                                <div className="sm:col-span-2">
+                                  <label className="text-[10px] font-bold text-slate-500 dark:text-slate-450 block mb-0.5">Pincode / ZIP / Postal Code</label>
+                                  <input
+                                    type="text"
+                                    disabled={!isEditMode || isSaving}
+                                    value={comp.pincode || ''}
+                                    onChange={(e) => {
+                                      const updatedComp = [...(draft.addressComponents || [])];
+                                      if (!updatedComp[idx]) updatedComp[idx] = {};
+                                      updatedComp[idx] = { ...updatedComp[idx], pincode: e.target.value };
+                                      updateDraftField('addressComponents', updatedComp);
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded text-xs text-slate-850 dark:text-slate-200 outline-none focus:border-blue-500 font-mono"
+                                    placeholder="Pincode / Postal index"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                     {isEditMode && (
                       <button
