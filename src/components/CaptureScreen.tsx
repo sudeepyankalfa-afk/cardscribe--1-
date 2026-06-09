@@ -458,9 +458,16 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
       {/* 2-Side Selector bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8" id="card-sides-layout-row">
         {/* Front slot button */}
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setActiveSide('front')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveSide('front');
+            }
+          }}
           className={`p-4 rounded-xl border text-left transition-all relative cursor-pointer outline-none bg-white dark:bg-slate-950 ${
             activeSide === 'front'
               ? 'border-blue-600 dark:border-blue-500 bg-blue-50/5 dark:bg-blue-950/20 ring-2 ring-blue-500/20'
@@ -496,7 +503,7 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
                   className="w-12 h-8 object-cover rounded border border-slate-200 dark:border-slate-800 bg-black"
                 />
               ) : (
-                <div className="w-12 h-8 rounded border border-dashed border-slate-350 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-[9px] text-slate-450 font-mono">
+                <div className="w-12 h-8 rounded border border-dashed border-slate-350 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 flex items-center justify-center text-[9px] text-slate-455 font-mono">
                   Empty
                 </div>
               )}
@@ -517,12 +524,19 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
               </button>
             )}
           </div>
-        </button>
+        </div>
 
         {/* Back slot button */}
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={() => setActiveSide('back')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setActiveSide('back');
+            }
+          }}
           className={`p-4 rounded-xl border text-left transition-all relative cursor-pointer outline-none bg-white dark:bg-slate-950 ${
             activeSide === 'back'
               ? 'border-blue-600 dark:border-blue-500 bg-blue-50/5 dark:bg-blue-950/20 ring-2 ring-blue-500/20'
@@ -579,7 +593,7 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
               </button>
             )}
           </div>
-        </button>
+        </div>
       </div>
 
       {/* Attachment Method Tab Selector */}
