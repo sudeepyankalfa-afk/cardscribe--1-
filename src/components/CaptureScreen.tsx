@@ -29,6 +29,7 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
   // Camera state
   const [hasCamera, setHasCamera] = useState<boolean | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   // Drag and drop upload state
@@ -71,39 +72,91 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
     };
   }, []);
 
-  // Shutdown camera stream on unmount
+  // Preload camera on screen entry & shutdown camera stream on unmount
   useEffect(() => {
+    startCamera();
     return () => {
       stopCamera();
     };
   }, []);
 
   const startCamera = async () => {
+    // 8. Prevent Duplicate Camera Initialization
+    if (cameraLoading || (cameraActive && streamRef.current?.active)) {
+      console.log('Camera already active or loading. Skipping reinit.');
+      return;
+    }
+
     setCameraError(null);
     setUploadError(null);
+    setCameraLoading(true);
+
+    // 6. Permission Optimization
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const permissionStatus = await navigator.permissions.query({ name: 'camera' as any });
+        if (permissionStatus.state === 'denied') {
+          setCameraError('Camera access is currently denied. Reset camera permissions in your browser bar or use "📸 Use Device Camera".');
+          setCameraLoading(false);
+          setHasCamera(false);
+          return;
+        }
+      } catch (err) {
+        console.debug('Navigator permissions query not supported for camera on this host:', err);
+      }
+    }
+
     try {
-      if (streamRef.current) {
-        stopCamera();
+      // 9. Stream Reuse Optimization
+      let stream = streamRef.current;
+      const isStreamActive = stream && stream.active && stream.getVideoTracks().some(t => t.readyState === 'live');
+
+      if (isStreamActive && stream) {
+        console.log('Reusing existing valid media stream instance');
+      } else {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('WebRTC camera streaming is not supported or is blocked in this context. Please use "📸 Use Device Camera"!');
+        }
+
+        // 1. Lower Initial Camera Resolution (1280x720 ideal)
+        const constraints = {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        };
+
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        streamRef.current = stream;
       }
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('WebRTC camera streaming is not supported or is blocked in this container context. Please use the "Phone System Camera" button instead!');
-      }
-
-      const constraints = {
-        video: {
-          facingMode: { ideal: 'environment' }, // Back camera for capturing text documents
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+
+        // 3. Wait for Camera Readiness
+        const video = videoRef.current;
+        await new Promise<void>((resolve) => {
+          const checkReady = () => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              resolve();
+            } else {
+              requestAnimationFrame(checkReady);
+            }
+          };
+
+          video.onloadedmetadata = () => {
+            checkReady();
+          };
+
+          // Fallback if dimensions or metadata are already loaded
+          if (video.readyState >= 1) {
+            checkReady();
+          }
+        });
       }
+
       setCameraActive(true);
       setHasCamera(true);
     } catch (err: any) {
@@ -111,12 +164,25 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
       setHasCamera(false);
       setCameraActive(false);
       
-      // Map error message gracefully for user
+      // 10. Improve Error Handling with User Friendly Messages
+      let friendlyMessage = 'Could not start browser camera stream. Please try using "📸 Use Device Camera" or direct file upload.';
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('Camera service denied. Please unlock permission or use the "Phone System Camera" button instead.');
-      } else {
-        setCameraError(err.message || 'Could not start video stream. Try using the "Phone System Camera" or file upload instead.');
+        friendlyMessage = 'Camera access was denied. Please allow camera permissions in your browser or use "📸 Use Device Camera".';
+      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+        friendlyMessage = 'No compatible camera device was found. Please select "📸 Use Device Camera" or upload a file directly.';
+      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        friendlyMessage = 'Your camera is already in use by another tab or program. Close other programs and try again.';
+      } else if (err.name === 'AbortError') {
+        friendlyMessage = 'Camera acquisition was aborted mid-stream. Please refresh this page and try again.';
+      } else if (err.name === 'OverconstrainedError') {
+        friendlyMessage = 'The requested 720p HD resolution configuration is not supported by your camera hardware.';
+      } else if (err.message) {
+        friendlyMessage = err.message;
       }
+      setCameraError(friendlyMessage);
+    } finally {
+      // 5. Turn off loading state
+      setCameraLoading(false);
     }
   };
 
@@ -129,9 +195,13 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
       videoRef.current.srcObject = null;
     }
     setCameraActive(false);
+    setCameraLoading(false);
   };
 
   const executeOcrProc = async (base64ImageOrImages: string | string[], thumbUrlOrUrls: string | string[]) => {
+    // Stop camera as OCR begins to release device camera locks
+    stopCamera();
+
     // Generate a unique ID
     const sessionId = 'session_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
     
@@ -251,8 +321,7 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
       const base64Image = canvas.toDataURL('image/jpeg', 0.9);
 
-      // Stop camera stream to conserve system camera locks
-      stopCamera();
+      // Keep camera active for instant subsequent captures (do not stopCamera here)
 
       // Process card capture
       await handleCapturedImage(base64Image);
@@ -533,6 +602,13 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
           </div>
 
           <div className="flex-1 bg-slate-950 flex items-center justify-center relative min-h-[300px]">
+            {cameraLoading ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3 bg-slate-950/90 z-20" id="camera-loading-overlay">
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                <span className="text-xs font-semibold tracking-wide uppercase font-mono">Starting Camera...</span>
+              </div>
+            ) : null}
+
             {cameraActive ? (
               <video
                 ref={videoRef}
@@ -578,28 +654,53 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
                   Capture {activeSide === 'front' ? 'the FRONT side A' : 'the BACK side B'} of your card using your device's native browser lens or system camera.
                 </p>
                 <div className="mt-6 flex flex-col gap-3 w-full">
-                  <button
-                    onClick={() => mobileCameraInputRef.current?.click()}
-                    className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
-                    style={{ minHeight: 44 }}
-                    id="mobile-native-camera-btn"
-                  >
-                    <span>Use Phone System Camera 📸</span>
-                  </button>
-                  <button
-                    onClick={startCamera}
-                    className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-100 transition-all active:scale-[0.98] cursor-pointer"
-                    style={{ minHeight: 44 }}
-                    id="camera-start-btn"
-                  >
-                    Use Live Browser Lens
-                  </button>
+                  {typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? (
+                    <>
+                      {/* Mobile ordered list: 1. Native Device Camera (Primary), 2. Live Browser Camera (Secondary) */}
+                      <button
+                        onClick={() => mobileCameraInputRef.current?.click()}
+                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                        style={{ minHeight: 44 }}
+                        id="mobile-native-camera-btn"
+                      >
+                        <span>📸 Use Device Camera</span>
+                      </button>
+                      <button
+                        onClick={startCamera}
+                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-100 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
+                        style={{ minHeight: 44 }}
+                        id="camera-start-btn"
+                      >
+                        <span>🌐 Use Browser Camera</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      {/* Desktop ordered list: 1. Live Browser Camera (Primary), 2. Native Device Camera (Secondary) */}
+                      <button
+                        onClick={startCamera}
+                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                        style={{ minHeight: 44 }}
+                        id="camera-start-btn"
+                      >
+                        <span>🌐 Use Browser Camera</span>
+                      </button>
+                      <button
+                        onClick={() => mobileCameraInputRef.current?.click()}
+                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-100 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
+                        style={{ minHeight: 44 }}
+                        id="mobile-native-camera-btn"
+                      >
+                        <span>📸 Use Device Camera</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
 
             {/* Active camera capture controls */}
-            {cameraActive && (
+            {cameraActive && !cameraLoading && (
               <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10">
                 <button
                   onClick={capturePhoto}
