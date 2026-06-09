@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User, Briefcase, Building, Phone, Mail, MapPin, Globe, Save, Download, 
@@ -38,7 +38,7 @@ export function ReviewScreen({ onNavigate, viewingSavedRecord }: ReviewScreenPro
   const [saveComplete, setSaveComplete] = useState(false);
 
   // If viewing a saved record, we construct a dummy temporary draft for viewing/editing
-  useMemo(() => {
+  useEffect(() => {
     if (viewingSavedRecord) {
       const parsedDraft = {
         fullName: viewingSavedRecord.fullName,

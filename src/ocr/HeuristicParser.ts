@@ -74,85 +74,67 @@ export class HeuristicParser {
       businessDomain: 0,
     };
 
+    const processedIndices = new Set<number>();
+
     // 1. Check for Round-Trip formatted prefix lines (e.g. "Name: Jane Doe")
     // This handles the round-trip deserialization requirement reliably.
-    let matchedPrefixes = false;
-    const unparsedLines: string[] = [];
-
-    for (const line of lines) {
+    lines.forEach((line, idx) => {
       const lowerLine = line.toLowerCase();
       if (lowerLine.startsWith('name:')) {
         fullName = line.substring(5).trim();
         confidenceMap.fullName = 1.0;
-        matchedPrefixes = true;
+        processedIndices.add(idx);
       } else if (lowerLine.startsWith('title:')) {
         title = line.substring(6).trim();
         confidenceMap.title = 1.0;
-        matchedPrefixes = true;
+        processedIndices.add(idx);
       } else if (lowerLine.startsWith('company:')) {
         company = line.substring(8).trim();
         confidenceMap.company = 1.0;
-        matchedPrefixes = true;
+        processedIndices.add(idx);
       } else if (lowerLine.startsWith('phone:') || lowerLine.startsWith('tel:')) {
         const val = line.substring(line.indexOf(':') + 1).trim();
         if (val) {
           phones.push(val);
           confidenceMap.phones = 1.0;
         }
-        matchedPrefixes = true;
+        processedIndices.add(idx);
       } else if (lowerLine.startsWith('email:')) {
         const val = line.substring(6).trim();
         if (val) {
           emails.push(val);
           confidenceMap.emails = 1.0;
         }
-        matchedPrefixes = true;
+        processedIndices.add(idx);
       } else if (lowerLine.startsWith('address:') || lowerLine.startsWith('adr:')) {
         const val = line.substring(line.indexOf(':') + 1).trim();
         if (val) {
           addresses.push(val);
           confidenceMap.addresses = 1.0;
         }
-        matchedPrefixes = true;
+        processedIndices.add(idx);
       } else if (lowerLine.startsWith('website:') || lowerLine.startsWith('web:') || lowerLine.startsWith('url:')) {
         const val = line.substring(line.indexOf(':') + 1).trim();
         if (val) {
           websites.push(val);
           confidenceMap.websites = 1.0;
         }
-        matchedPrefixes = true;
+        processedIndices.add(idx);
       } else if (lowerLine.startsWith('domain:') || lowerLine.startsWith('industry:')) {
         const val = line.substring(line.indexOf(':') + 1).trim();
         if (val) {
           businessDomain = val;
           confidenceMap.businessDomain = 1.0;
         }
-        matchedPrefixes = true;
-      } else {
-        unparsedLines.push(line);
+        processedIndices.add(idx);
       }
-    }
-
-    if (matchedPrefixes) {
-      // If we matched structural prefixes, fill remaining unparsed lines to discover and return
-      return {
-        fullName,
-        title,
-        company,
-        phones,
-        emails,
-        addresses,
-        websites,
-        businessDomain,
-        confidenceMap,
-      };
-    }
+    });
 
     // 2. Fall back to standard card heuristics for rich OCR raw text
-    const processedIndices = new Set<number>();
-
     // Step A: Extract Email addresses (high certainty)
     lines.forEach((line, idx) => {
+      if (processedIndices.has(idx)) return;
+
       const emailMatches = line.match(EMAIL_REGEX);
       if (emailMatches) {
         emailMatches.forEach((email) => {
@@ -160,14 +142,16 @@ export class HeuristicParser {
             emails.push(email);
           }
         });
-        confidenceMap.emails = 0.95;
+        if (!confidenceMap.emails) {
+          confidenceMap.emails = 0.95;
+        }
         processedIndices.add(idx);
       }
     });
 
     // Step B: Extract Websites (high certainty, excluding emails)
     lines.forEach((line, idx) => {
-      // Exclude if already processed as email line
+      // Exclude if already processed
       if (processedIndices.has(idx)) return;
 
       const urlMatches = line.match(URL_REGEX);
@@ -182,7 +166,9 @@ export class HeuristicParser {
           }
         });
         if (websites.length > 0) {
-          confidenceMap.websites = 0.9;
+          if (!confidenceMap.websites) {
+            confidenceMap.websites = 0.9;
+          }
           processedIndices.add(idx);
         }
       }
@@ -198,7 +184,9 @@ export class HeuristicParser {
         const cleaned = kwMatch[1].trim();
         if (cleaned.replace(/[^\d]/g, '').length >= 5) {
           phones.push(cleaned);
-          confidenceMap.phones = 0.92;
+          if (!confidenceMap.phones) {
+            confidenceMap.phones = 0.92;
+          }
           processedIndices.add(idx);
           return;
         }
@@ -218,7 +206,9 @@ export class HeuristicParser {
           }
         });
         if (phones.length > 0) {
-          confidenceMap.phones = 0.78;
+          if (!confidenceMap.phones) {
+            confidenceMap.phones = 0.78;
+          }
           processedIndices.add(idx);
         }
       }
@@ -241,7 +231,9 @@ export class HeuristicParser {
         if (!addresses.includes(line)) {
           addresses.push(line);
         }
-        confidenceMap.addresses = 0.85;
+        if (!confidenceMap.addresses) {
+          confidenceMap.addresses = 0.85;
+        }
         processedIndices.add(idx);
       }
     });
@@ -254,25 +246,27 @@ export class HeuristicParser {
       }
     });
 
-    // Heuristics for Title (roles)
-    const possibleTitles: string[] = [];
-    remainingLines.forEach((item) => {
-      const lower = item.text.toLowerCase();
-      const isTitle = TITLE_KEYWORDS.some((kw) => {
-        const regex = new RegExp(`\\b${kw}\\b`, 'i');
-        return regex.test(lower);
+    // Heuristics for Title (roles) - run only if not parsed from prefixes yet!
+    if (!title) {
+      const possibleTitles: string[] = [];
+      remainingLines.forEach((item) => {
+        const lower = item.text.toLowerCase();
+        const isTitle = TITLE_KEYWORDS.some((kw) => {
+          const regex = new RegExp(`\\b${kw}\\b`, 'i');
+          return regex.test(lower);
+        });
+
+        // Avoid long address/description text or digits
+        if (isTitle && item.text.length < 50 && !/\d{4,}/.test(item.text)) {
+          possibleTitles.push(item.text);
+          processedIndices.add(item.index);
+        }
       });
 
-      // Avoid long address/description text or digits
-      if (isTitle && item.text.length < 50 && !/\d{4,}/.test(item.text)) {
-        possibleTitles.push(item.text);
-        processedIndices.add(item.index);
+      if (possibleTitles.length > 0) {
+        title = possibleTitles[0];
+        confidenceMap.title = 0.82;
       }
-    });
-
-    if (possibleTitles.length > 0) {
-      title = possibleTitles[0];
-      confidenceMap.title = 0.82;
     }
 
     // Re-filter remaining lines
@@ -286,50 +280,55 @@ export class HeuristicParser {
       }
     });
 
-    // Heuristic for Company Name
-    // Usually company corresponds to lines with corporate keywords
+    // Heuristic for Company Name - run only if not parsed from prefixes yet!
     let companyIdx = -1;
-    for (let i = 0; i < finalCleanLines.length; i++) {
-      const lower = finalCleanLines[i].toLowerCase();
-      const isCompany = COMPANY_KEYWORDS.some((kw) => {
-        const regex = new RegExp(`\\b${kw}\\b`, 'i');
-        return regex.test(lower);
-      });
+    if (!company) {
+      for (let i = 0; i < finalCleanLines.length; i++) {
+        const lower = finalCleanLines[i].toLowerCase();
+        const isCompany = COMPANY_KEYWORDS.some((kw) => {
+          const regex = new RegExp(`\\b${kw}\\b`, 'i');
+          return regex.test(lower);
+        });
 
-      if (isCompany) {
-        company = finalCleanLines[i];
-        confidenceMap.company = 0.88;
-        companyIdx = i;
-        break;
+        if (isCompany) {
+          company = finalCleanLines[i];
+          confidenceMap.company = 0.88;
+          // find the actual line index corresponding to this clean line
+          companyIdx = lines.indexOf(finalCleanLines[i]);
+          if (companyIdx !== -1) {
+            processedIndices.add(companyIdx);
+          }
+          break;
+        }
       }
     }
 
-    // Fallbacks for Full Name
-    // Usually full name is the first line of the remaining lines (at the top of the card)
-    // Excluding the company name if we matched it, or we can use positional fallback.
-    const nameCandidates = finalCleanLines.filter((_, idx) => idx !== companyIdx);
+    // Fallbacks for Full Name - run only if not parsed from prefixes yet!
+    if (!fullName) {
+      const nameCandidates = finalCleanLines.filter((c) => lines.indexOf(c) !== companyIdx);
 
-    if (nameCandidates.length > 0) {
-      // Prefer Title Case (like John Doe or Jane A. Smith)
-      const titleCaseCandidate = nameCandidates.find((c) => {
-        // Simple letters-only Title Case checker
-        const words = c.trim().split(/\s+/);
-        if (words.length >= 2 && words.length <= 4) {
-          return words.every((w) => /^[A-Z][A-Za-z.']*/.test(w) || w.length === 1);
-        }
-        return false;
-      });
+      if (nameCandidates.length > 0) {
+        // Prefer Title Case (like John Doe or Jane A. Smith)
+        const titleCaseCandidate = nameCandidates.find((c) => {
+          // Simple letters-only Title Case checker
+          const words = c.trim().split(/\s+/);
+          if (words.length >= 2 && words.length <= 4) {
+            return words.every((w) => /^[A-Z][A-Za-z.']*/.test(w) || w.length === 1);
+          }
+          return false;
+        });
 
-      fullName = titleCaseCandidate || nameCandidates[0];
-      confidenceMap.fullName = titleCaseCandidate ? 0.85 : 0.70;
+        fullName = titleCaseCandidate || nameCandidates[0];
+        confidenceMap.fullName = titleCaseCandidate ? 0.85 : 0.70;
 
-      // If we didn't identify a company, but we have multiple candidates left,
-      // the second candidate might be the company or title or secondary info
-      if (!company && nameCandidates.length > 1) {
-        const secondary = nameCandidates.find((c) => c !== fullName);
-        if (secondary) {
-          company = secondary;
-          confidenceMap.company = 0.70;
+        // If we didn't identify a company, but we have multiple candidates left,
+        // the second candidate might be the company or title or secondary info
+        if (!company && nameCandidates.length > 1) {
+          const secondary = nameCandidates.find((c) => c !== fullName);
+          if (secondary) {
+            company = secondary;
+            confidenceMap.company = 0.70;
+          }
         }
       }
     }

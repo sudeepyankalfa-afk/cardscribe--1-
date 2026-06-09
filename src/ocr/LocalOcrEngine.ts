@@ -51,13 +51,18 @@ export class LocalOcrEngine implements IOcrEngine {
           totalConfidence += confidence;
         }
 
-        // Map words bounding box coordinates safely
+        // Get image dimensions to scale coordinates to percentages (0-100)
+        const dims = await getImageDimensions(img);
+        const imgWidth = dims.width || 1;
+        const imgHeight = dims.height || 1;
+
+        // Map words bounding box coordinates safely as percentages (0-100)
         const ocrWords: OcrWord[] = (words || []).map((w: any) => ({
           text: w.text,
-          x0: w.bbox?.x0 ?? 0,
-          y0: w.bbox?.y0 ?? 0,
-          x1: w.bbox?.x1 ?? 0,
-          y1: w.bbox?.y1 ?? 0,
+          x0: w.bbox ? (w.bbox.x0 / imgWidth) * 100 : 0,
+          y0: w.bbox ? (w.bbox.y0 / imgHeight) * 100 : 0,
+          x1: w.bbox ? (w.bbox.x1 / imgWidth) * 100 : 0,
+          y1: w.bbox ? (w.bbox.y1 / imgHeight) * 100 : 0,
         }));
         allWords.push(...ocrWords);
       }
@@ -78,4 +83,17 @@ export class LocalOcrEngine implements IOcrEngine {
       );
     }
   }
+}
+
+function getImageDimensions(src: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      resolve({ width: 0, height: 0 });
+    };
+    img.src = src;
+  });
 }
