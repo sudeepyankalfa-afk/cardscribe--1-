@@ -47,6 +47,7 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileCameraInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sync online status
   useEffect(() => {
@@ -59,7 +60,10 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
     window.addEventListener('online', updateOnline);
     window.addEventListener('offline', updateOnline);
     
-
+    // Default to cloud if online on start
+    if (navigator.onLine) {
+      setOcrEngineMode('cloud');
+    }
 
     return () => {
       window.removeEventListener('online', updateOnline);
@@ -80,6 +84,10 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
     try {
       if (streamRef.current) {
         stopCamera();
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('WebRTC camera streaming is not supported or is blocked in this container context. Please use the "Phone System Camera" button instead!');
       }
 
       const constraints = {
@@ -105,9 +113,9 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
       
       // Map error message gracefully for user
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setCameraError('Camera service denied. Please unlock permission or choose a file upload instead.');
+        setCameraError('Camera service denied. Please unlock permission or use the "Phone System Camera" button instead.');
       } else {
-        setCameraError('Could not start video stream. Your device might not support native browsers camera streams.');
+        setCameraError(err.message || 'Could not start video stream. Try using the "Phone System Camera" or file upload instead.');
       }
     }
   };
@@ -255,6 +263,15 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setUploadError(null);
+    setCameraError(null);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      await processSelectedFile(files[0]);
+    }
+  };
+
+  const handleMobileCameraChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadError(null);
     setCameraError(null);
     const files = e.target.files;
@@ -556,18 +573,28 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
                 <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-slate-450 mb-4 border border-slate-805">
                   <Camera className="w-8 h-8" />
                 </div>
-                <h3 className="text-slate-200 font-medium text-sm">Camera Stream Unconnected</h3>
+                <h3 className="text-slate-200 font-medium text-sm">Camera Option</h3>
                 <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                  Capture {activeSide === 'front' ? 'the FRONT side A' : 'the BACK side B'} of your card using your device's native glass lens.
+                  Capture {activeSide === 'front' ? 'the FRONT side A' : 'the BACK side B'} of your card using your device's native browser lens or system camera.
                 </p>
-                <button
-                  onClick={startCamera}
-                  className="mt-6 font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-950 text-white transition-all active:scale-[0.98] cursor-pointer"
-                  style={{ minHeight: 44, minWidth: 150 }}
-                  id="camera-start-btn"
-                >
-                  Enable Lens Camera
-                </button>
+                <div className="mt-6 flex flex-col gap-3 w-full">
+                  <button
+                    onClick={() => mobileCameraInputRef.current?.click()}
+                    className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
+                    style={{ minHeight: 44 }}
+                    id="mobile-native-camera-btn"
+                  >
+                    <span>Use Phone System Camera 📸</span>
+                  </button>
+                  <button
+                    onClick={startCamera}
+                    className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-100 transition-all active:scale-[0.98] cursor-pointer"
+                    style={{ minHeight: 44 }}
+                    id="camera-start-btn"
+                  >
+                    Use Live Browser Lens
+                  </button>
+                </div>
               </div>
             )}
 
@@ -620,6 +647,15 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
               accept="image/jpeg,image/png,image/webp"
               className="hidden"
               id="file-capture-picker"
+            />
+            <input
+              type="file"
+              ref={mobileCameraInputRef}
+              onChange={handleMobileCameraChange}
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              id="mobile-camera-picker"
             />
             
             <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 transition-colors ${
