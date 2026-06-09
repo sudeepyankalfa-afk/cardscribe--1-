@@ -39,6 +39,14 @@ export interface ConfidenceMap {
   businessDomain: number;
 }
 
+export interface AddressComponent {
+  street?: string;
+  city?: string;
+  district?: string; // State/Province/District/Region
+  country?: string;
+  pincode?: string; // Postal code, ZIP, or Pincode
+}
+
 export interface ParsedContact {
   fullName: string;
   title: string;
@@ -49,6 +57,8 @@ export interface ParsedContact {
   websites: string[];
   businessDomain?: string;
   confidenceMap: ConfidenceMap;
+  detectedLanguages?: string[];
+  addressComponents?: AddressComponent[];
 }
 
 export interface CaptureSession {
@@ -79,4 +89,6 @@ export interface ContactRecord {
   notes?: string;
   thumbnailUrl?: string; // Captured card thumbnail URL if available
   businessDomain?: string;
+  detectedLanguages?: string[];
+  addressComponents?: AddressComponent[];
 }
