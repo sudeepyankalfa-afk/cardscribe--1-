@@ -58,6 +58,8 @@ export class CloudOcrEngine implements IOcrEngine {
         addresses: data.addresses || [],
         websites: data.websites || [],
         businessDomain: data.businessDomain || 'Other',
+        detectedLanguages: data.detectedLanguages || [],
+        addressComponents: data.addressComponents || [],
         confidenceMap: {
           fullName: data.confidenceMap?.fullName ?? 0.8,
           title: data.confidenceMap?.title ?? 0.8,
