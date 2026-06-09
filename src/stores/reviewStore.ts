@@ -118,8 +118,15 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     const updatedDraft = {
       ...draft,
-      [field]: [...draft[field], ''],
+      [field]: [...draft[field], ''] as any,
     };
+
+    if (field === 'addresses') {
+      updatedDraft.addressComponents = [
+        ...(draft.addressComponents || []),
+        { street: '', city: '', district: '', country: '', pincode: '' }
+      ];
+    }
 
     set({ draft: updatedDraft });
   },
@@ -131,8 +138,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const arrayCopy = draft[field].filter((_, i) => i !== index);
     const updatedDraft = {
       ...draft,
-      [field]: arrayCopy,
+      [field]: arrayCopy as any,
     };
+
+    if (field === 'addresses' && draft.addressComponents) {
+      updatedDraft.addressComponents = draft.addressComponents.filter((_, i) => i !== index);
+    }
 
     // Also clean up validation errors for that index (shift down errors)
     const errors = { ...get().validationErrors };
