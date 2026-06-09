@@ -39,6 +39,9 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
   // Active selected side for capturing/uploading ('front' or 'back')
   const [activeSide, setActiveSide] = useState<'front' | 'back'>('front');
 
+  // Active method of camera capture or file upload ('camera' or 'upload')
+  const [activeTab, setActiveTab] = useState<'camera' | 'upload'>('camera');
+
   // Captured files data
   const [frontImage, setFrontImage] = useState<string | null>(null);
   const [backImage, setBackImage] = useState<string | null>(null);
@@ -60,11 +63,6 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
     };
     window.addEventListener('online', updateOnline);
     window.addEventListener('offline', updateOnline);
-    
-    // Default to cloud if online on start
-    if (navigator.onLine) {
-      setOcrEngineMode('cloud');
-    }
 
     return () => {
       window.removeEventListener('online', updateOnline);
@@ -72,9 +70,12 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
     };
   }, []);
 
-  // Preload camera on screen entry & shutdown camera stream on unmount
+  // Ensure any standard browser webcam streams are kept closed as we use native camera exclusively
   useEffect(() => {
-    startCamera();
+    stopCamera();
+  }, [activeTab]);
+
+  useEffect(() => {
     return () => {
       stopCamera();
     };
@@ -581,228 +582,216 @@ export function CaptureScreen({ onNavigate }: CaptureScreenProps) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-        {/* Camera capture element card */}
-        <div className="md:col-span-7 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs flex flex-col min-h-[400px]" id="camera-viewport-card">
-          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/40">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Camera className="w-4 h-4 text-slate-400" />
-              <span>Workspace: {activeSide === 'front' ? 'Side A (Front)' : 'Side B (Back)'} side</span>
-            </span>
-            {cameraActive && (
-              <button
-                onClick={stopCamera}
-                className="text-xs text-rose-600 hover:text-rose-700 font-medium px-2 py-1 rounded hover:bg-rose-50 dark:hover:bg-rose-950/20"
-                style={{ minHeight: 44, minWidth: 60 }}
-                id="camera-stop-btn"
-              >
-                Disable Lens
-              </button>
-            )}
-          </div>
+      {/* Attachment Method Tab Selector */}
+      <div className="flex bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 w-full max-w-md mx-auto mb-8" id="attachment-method-tabs">
+        <button
+          type="button"
+          onClick={() => setActiveTab('camera')}
+          className={`flex-1 flex items-center justify-center gap-2.5 py-3 rounded-xl text-xs uppercase font-bold tracking-wider transition-all cursor-pointer ${
+            activeTab === 'camera'
+              ? 'bg-white text-slate-900 dark:bg-slate-800 dark:text-white shadow-xs border border-slate-200/60 dark:border-slate-700'
+              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+          }`}
+          style={{ minHeight: 44 }}
+          id="tab-camera-trigger"
+        >
+          <Camera className="w-4 h-4 text-blue-500" />
+          <span>Capture with Camera</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('upload')}
+          className={`flex-1 flex items-center justify-center gap-2.5 py-3 rounded-xl text-xs uppercase font-bold tracking-wider transition-all cursor-pointer ${
+            activeTab === 'upload'
+              ? 'bg-white text-slate-900 dark:bg-slate-800 dark:text-white shadow-xs border border-slate-200/60 dark:border-slate-700'
+              : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-300'
+          }`}
+          style={{ minHeight: 44 }}
+          id="tab-upload-trigger"
+        >
+          <Upload className="w-4 h-4 text-emerald-500" />
+          <span>Upload Saved Image</span>
+        </button>
+      </div>
 
-          <div className="flex-1 bg-slate-950 flex items-center justify-center relative min-h-[300px]">
-            {cameraLoading ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 gap-3 bg-slate-950/90 z-20" id="camera-loading-overlay">
-                <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                <span className="text-xs font-semibold tracking-wide uppercase font-mono">Starting Camera...</span>
-              </div>
-            ) : null}
+      <div className="max-w-2xl mx-auto space-y-6" id="attachment-workflow-content">
+        {activeTab === 'camera' ? (
+          /* Camera capture element card - Native device camera exclusive */
+          <div className="bg-white dark:bg-slate-950 border border-slate-205 dark:border-slate-800 rounded-xl overflow-hidden shadow-xs flex flex-col min-h-[360px]" id="camera-viewport-card">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/40">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <Camera className="w-4 h-4 text-blue-500" />
+                <span>Workspace: {activeSide === 'front' ? 'Side A (Front)' : 'Side B (Back)'} side</span>
+              </span>
+            </div>
 
-            {cameraActive ? (
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover aspect-video"
-                id="camera-video-source"
-              />
-            ) : (activeSide === 'front' ? frontImage : backImage) ? (
-              // Inspecting currently captured image side
-              <div className="w-full h-full p-6 flex flex-col items-center justify-center max-w-lg mx-auto">
-                <img
-                  src={activeSide === 'front' ? (frontImage || '') : (backImage || '')}
-                  alt={`Captured ${activeSide} side`}
-                  className="w-full h-auto max-h-[220px] object-contain rounded-lg border border-slate-800 bg-slate-900 shadow-md"
-                />
-                
-                <div className="mt-5 flex items-center gap-2.5">
-                  <button
-                    onClick={startCamera}
-                    className="font-bold text-xs tracking-wide uppercase px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900 bg-white dark:bg-slate-950 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
-                    id="retake-photo-btn"
-                  >
-                    Retake with Camera
-                  </button>
-                  <button
-                    onClick={(e) => handleClearSide(activeSide, e)}
-                    className="font-bold text-xs tracking-wide uppercase px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-950/60 dark:text-rose-450 border border-thin border-rose-100 dark:border-rose-950/50 transition-all cursor-pointer"
-                    id="clear-side-btn"
-                  >
-                    Clear Image
-                  </button>
+            <div className="flex-1 bg-slate-50/50 dark:bg-slate-950/25 flex flex-col items-center justify-center p-6 min-h-[300px]">
+              {(activeSide === 'front' ? frontImage : backImage) ? (
+                // Inspecting currently captured image side
+                <div className="w-full h-full flex flex-col items-center justify-center max-w-lg mx-auto" id="captured-preview-container">
+                  <div className="relative group rounded-xl overflow-hidden shadow-md">
+                    <img
+                      src={activeSide === 'front' ? (frontImage || '') : (backImage || '')}
+                      alt={`Captured ${activeSide} side`}
+                      className="w-full h-auto max-h-[220px] object-contain bg-slate-900 border border-slate-200 dark:border-slate-800"
+                    />
+                    <div className="absolute top-2 right-2 bg-emerald-500 text-white rounded-full p-1 shadow-md">
+                      <Check className="w-4 h-4" />
+                    </div>
+                  </div>
+                  
+                  <div className="mt-5 flex items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => mobileCameraInputRef.current?.click()}
+                      className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:hover:bg-blue-950/70 dark:text-blue-400 transition-all cursor-pointer flex items-center gap-2"
+                      id="retake-photo-btn"
+                    >
+                      <Camera className="w-4 h-4" />
+                      <span>Retake Photo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleClearSide(activeSide, e)}
+                      className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/30 dark:hover:bg-rose-950/60 dark:text-rose-450 border border-thin border-rose-100 dark:border-rose-955 transition-all cursor-pointer flex items-center gap-2"
+                      id="clear-side-btn"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Clear Image</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="text-center p-8 flex flex-col items-center max-w-sm">
-                <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-slate-450 mb-4 border border-slate-805">
-                  <Camera className="w-8 h-8" />
-                </div>
-                <h3 className="text-slate-200 font-medium text-sm">Camera Option</h3>
-                <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-                  Capture {activeSide === 'front' ? 'the FRONT side A' : 'the BACK side B'} of your card using your device's native browser lens or system camera.
-                </p>
-                <div className="mt-6 flex flex-col gap-3 w-full">
-                  {typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? (
-                    <>
-                      {/* Mobile ordered list: 1. Native Device Camera (Primary), 2. Live Browser Camera (Secondary) */}
-                      <button
-                        onClick={() => mobileCameraInputRef.current?.click()}
-                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 shadow-sm"
-                        style={{ minHeight: 44 }}
-                        id="mobile-native-camera-btn"
-                      >
-                        <span>📸 Use Device Camera</span>
-                      </button>
-                      <button
-                        onClick={startCamera}
-                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-100 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
-                        style={{ minHeight: 44 }}
-                        id="camera-start-btn"
-                      >
-                        <span>🌐 Use Browser Camera</span>
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      {/* Desktop ordered list: 1. Live Browser Camera (Primary), 2. Native Device Camera (Secondary) */}
-                      <button
-                        onClick={startCamera}
-                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 shadow-sm"
-                        style={{ minHeight: 44 }}
-                        id="camera-start-btn"
-                      >
-                        <span>🌐 Use Browser Camera</span>
-                      </button>
-                      <button
-                        onClick={() => mobileCameraInputRef.current?.click()}
-                        className="font-bold text-xs tracking-wide uppercase px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-850 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-100 transition-all active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2"
-                        style={{ minHeight: 44 }}
-                        id="mobile-native-camera-btn"
-                      >
-                        <span>📸 Use Device Camera</span>
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Active camera capture controls */}
-            {cameraActive && !cameraLoading && (
-              <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10">
+              ) : (
+                /* Clickable Active Graphic Panel to Open Native Device Camera directly */
                 <button
-                  onClick={capturePhoto}
-                  className="w-14 h-14 rounded-full border-4 border-white bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 flex items-center justify-center text-white dark:text-slate-900 transition-all hover:scale-105 active:scale-95 shadow-md"
-                  style={{ minWidth: 56, minHeight: 56 }}
-                  aria-label="Capture snapshot"
-                  id="camera-snap-btn"
+                  type="button"
+                  onClick={() => mobileCameraInputRef.current?.click()}
+                  className="w-full max-w-md mx-auto text-center p-8 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-2xl shadow-xs hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-md transition-all duration-300 flex flex-col items-center justify-center min-h-[220px] group outline-none"
+                  title="Click to open device camera app"
+                  id="interactive-device-camera-button"
                 >
-                  <Camera className="w-5 h-5" />
+                  <div className="w-16 h-16 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-500 flex items-center justify-center mb-4 border border-blue-100/50 dark:border-blue-900 group-hover:scale-105 group-hover:bg-blue-505 dark:group-hover:bg-blue-900 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-all duration-300">
+                    <Camera className="w-7 h-7" />
+                  </div>
+                  <h3 className="text-slate-800 dark:text-slate-200 font-semibold text-sm transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                    Use Device Camera
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 leading-relaxed max-w-xs">
+                    Tap to launch your smartphone or tablet's native camera. Simply draft your photo, snap a picture, and return here.
+                  </p>
+                  
+                  <div className="mt-5 px-5 py-2.5 rounded-xl bg-blue-600 group-hover:bg-blue-700 text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm">
+                    <Smartphone className="w-4 h-4" />
+                    <span>Open Native Camera</span>
+                  </div>
                 </button>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* File Picker Area and Error states in a pristine stack */
+          <div className="space-y-6">
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-xl p-10 text-center flex flex-col items-center justify-center min-h-[250px] cursor-pointer transition-all bg-white dark:bg-slate-950 ${
+                dragActive
+                  ? 'border-blue-500 bg-blue-50/10 dark:bg-blue-950/10'
+                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-350 hover:bg-slate-50/40 dark:hover:bg-slate-950/20'
+              }`}
+              onClick={() => fileInputRef.current?.click()}
+              id="upload-dropzone"
+            >
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 transition-colors ${
+                dragActive
+                  ? 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400'
+                  : 'bg-slate-100 text-slate-500 dark:bg-slate-900'
+              }`}>
+                <Upload className="w-6 h-6" />
+              </div>
+
+              {((activeSide === 'front' ? frontImage : backImage)) ? (
+                <div className="flex flex-col items-center">
+                  <img
+                    src={activeSide === 'front' ? (frontImage || '') : (backImage || '')}
+                    alt={`Attached ${activeSide} side`}
+                    className="w-auto max-h-[140px] object-contain rounded border border-slate-200 dark:border-slate-800 bg-slate-900 shadow-sm mb-4"
+                  />
+                  <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                    ✓ Attached Side {activeSide === 'front' ? 'A (Front)' : 'B (Back)'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="mt-3 text-xs text-blue-600 hover:underline font-bold"
+                  >
+                    Replace Image
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <h3 className="font-semibold text-slate-850 dark:text-slate-200 text-sm">
+                    {dragActive ? `Drop card ${activeSide} side` : `Browse Saved image for ${activeSide === 'front' ? 'Front' : 'Back'} side`}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-xs mx-auto leading-relaxed">
+                    Drag &amp; drop a photo of your card's {activeSide === 'front' ? 'FRONT' : 'BACK'} side here, or click to browse files.
+                  </p>
+                  <p className="text-[10px] text-slate-450 uppercase tracking-widest mt-4">
+                    Supports JPEG, PNG, or WebP
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Validation Reject Frame */}
+            {uploadError && (
+              <div className="p-4 rounded-xl bg-rose-50 dark:bg-slate-900 border border-rose-100 dark:border-rose-950/40 flex items-start gap-2.5" id="upload-error-message">
+                <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
+                <div className="text-xs leading-relaxed text-rose-800 dark:text-rose-400 font-sans">
+                  <p className="font-semibold">Upload rejected</p>
+                  <p className="mt-1">{uploadError}</p>
+                </div>
               </div>
             )}
           </div>
+        )}
 
-          {/* Camera Permission Error Indicator */}
-          {cameraError && (
-            <div className="p-4 bg-amber-50 dark:bg-slate-905 text-amber-800 dark:text-amber-400 border-t border-amber-200 dark:border-amber-800 flex items-start gap-2.5" id="camera-error-message">
-              <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <div className="text-xs leading-relaxed font-sans">
-                <p className="font-semibold">Camera access alert</p>
-                <p className="mt-1">{cameraError}</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* File Picker Drag-and-Drop Area */}
-        <div className="md:col-span-5 flex flex-col gap-6">
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-xl p-8 text-center flex flex-col items-center justify-center min-h-[220px] cursor-pointer transition-all ${
-              dragActive
-                ? 'border-blue-500 bg-blue-50/10 dark:bg-blue-950/10'
-                : 'border-slate-200 dark:border-slate-800 hover:border-slate-350 hover:bg-slate-50/40 dark:hover:bg-slate-950/20'
-            }`}
-            onClick={() => fileInputRef.current?.click()}
-            id="upload-dropzone"
-          >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="image/jpeg,image/png,image/webp"
-              className="hidden"
-              id="file-capture-picker"
-            />
-            <input
-              type="file"
-              ref={mobileCameraInputRef}
-              onChange={handleMobileCameraChange}
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              id="mobile-camera-picker"
-            />
-            
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 transition-colors ${
-              dragActive
-                ? 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400'
-                : 'bg-slate-100 text-slate-500 dark:bg-slate-900'
-            }`}>
-              <Upload className="w-6 h-6" />
-            </div>
-
-            <h3 className="font-medium text-slate-800 dark:text-slate-200 text-sm">
-              {dragActive ? `Drop card ${activeSide} side` : `Upload ${activeSide === 'front' ? 'Front' : 'Back'} side`}
-            </h3>
-            <p className="text-xs text-slate-400 mt-2 max-w-xs mx-auto">
-              Drag &amp; drop a photo of your card's {activeSide === 'front' ? 'FRONT' : 'BACK'} side right here, or click to browse files.
-            </p>
-            <p className="text-[10px] text-slate-400 uppercase tracking-wider mt-4">
-              Supports JPEG, PNG, or WebP
-            </p>
-          </div>
-
-          {/* Validation Reject Frame */}
-          {uploadError && (
-            <div className="p-4 rounded-xl bg-rose-50 dark:bg-slate-900 border border-rose-100 dark:border-rose-950/40 flex items-start gap-2.5" id="upload-error-message">
-              <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0 mt-0.5" />
-              <div className="text-xs leading-relaxed text-rose-800 dark:text-rose-400 font-sans">
-                <p className="font-semibold">Upload rejected</p>
-                <p className="mt-1">{uploadError}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Quick instructions panel */}
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-805 rounded-xl p-5" id="guidelines-card">
-            <h4 className="font-semibold text-xs tracking-wider uppercase text-slate-500 mb-3 flex items-center gap-1.5">
-              <ImageIcon className="w-4 h-4 text-slate-400" />
-              Two-Sided Business Cards
-            </h4>
-            <ul className="space-y-2.5 text-xs text-slate-500 leading-relaxed list-disc list-inside">
-              <li>Upload <strong>Side A (Front)</strong> with standard coordinates first.</li>
-              <li>Toggle and attach <strong>Side B (Back)</strong> if the card contains details like additional phone lines, websites, or social handles on the back.</li>
-              <li>Cloud AI will synthesize information from both sides together into a single contact draft.</li>
-            </ul>
-          </div>
+        {/* Global Quick instructions guidelines panel */}
+        <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-805 rounded-xl p-5" id="guidelines-card">
+          <h4 className="font-semibold text-xs tracking-wider uppercase text-slate-500 mb-3 flex items-center gap-1.5">
+            <ImageIcon className="w-4 h-4 text-slate-400" />
+            Two-Sided Business Cards
+          </h4>
+          <ul className="space-y-2.5 text-xs text-slate-500 leading-relaxed list-disc list-inside">
+            <li>Upload <strong>Side A (Front)</strong> with standard coordinates first.</li>
+            <li>Toggle and attach <strong>Side B (Back)</strong> if the card contains details like additional phone lines, websites, or social handles on the back.</li>
+            <li>Cloud AI will synthesize information from both sides together into a single contact draft.</li>
+          </ul>
         </div>
       </div>
+
+      {/* Persistent global inputs */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        id="file-capture-picker"
+      />
+      <input
+        type="file"
+        ref={mobileCameraInputRef}
+        onChange={handleMobileCameraChange}
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        id="mobile-camera-picker"
+      />
 
       {/* Start analysis action trigger */}
       {frontImage && (
