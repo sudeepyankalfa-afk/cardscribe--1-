@@ -84,7 +84,17 @@ async function startServer() {
       }
 
       const promptPart = {
-        text: 'Perform high-accuracy OCR extraction and field parsing from the provided business card image(s) (there may be 1 or 2 images, representing the front and optionally back side of the card). Combine and synthesize details from both sides. Extract the Full Name, Professional Title, Company/Organization name, Phone numbers, Email addresses, Physical Addresses, and Websites. Assign confidence scores between 0 and 1 for each field based on how clear and legibly they are in the image(s). Also provide the raw text and split words coordinate mappings.',
+        text: `Perform high-accuracy multi-language OCR extraction and field parsing from the provided business card image(s) (there may be 1 or 2 images, representing the front and optionally back side of the card).
+The cards may contain details printed in one or multiple languages (e.g., English, Japanese, Spanish, German, French, Chinese, Hindi, Arabic, etc.). Identify the languages used on the card, keep original native scripts and characters intact, and synthesize details dynamically.
+
+Ensure that physical addresses are parsed with extreme care. You must extract every part of the physical address that is present on the card:
+- Street name and number (including building names, floor numbers, offices, suites)
+- City name
+- District / State / Province / Region
+- Country
+- Pincode / ZIP / Postal code
+
+Do not omit any part of the address present on the card. Each address must be synthesized into a clean full address block under the 'addresses' list, and also broken down into granular address components under 'addressComponents' (with one component object corresponding to each address item). Also determine confidence scores between 0 and 1 for each field.`,
       };
 
       // Define structured responseSchema
@@ -107,7 +117,7 @@ async function startServer() {
           addresses: {
             type: Type.ARRAY,
             items: { type: Type.STRING },
-            description: 'Postal/office physical addresses.',
+            description: 'Postal/office physical addresses fully structured.',
           },
           websites: {
             type: Type.ARRAY,
@@ -117,6 +127,25 @@ async function startServer() {
           businessDomain: {
             type: Type.STRING,
             description: 'The industry or business domain of the contact/card (e.g. Technology, Healthcare, Finance, Education, Retail, Consulting, Real Estate, Food & Dining, Entertainment, Government, Legal, Manufacturing). Choose a concise, professional category.',
+          },
+          detectedLanguages: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: 'Languages detected on the business card (e.g. ["English", "Japanese", "Hindi"]).',
+          },
+          addressComponents: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                street: { type: Type.STRING, description: 'Street name, numbers, suite/floor/building information.' },
+                city: { type: Type.STRING, description: 'City name.' },
+                district: { type: Type.STRING, description: 'District, State, Province, or Region.' },
+                country: { type: Type.STRING, description: 'Country.' },
+                pincode: { type: Type.STRING, description: 'Pincode, ZIP code, or Postal code.' },
+              }
+            },
+            description: 'Parsed granular address attributes for each address in the addresses list.'
           },
           confidenceMap: {
             type: Type.OBJECT,
@@ -158,6 +187,8 @@ async function startServer() {
           'addresses',
           'websites',
           'businessDomain',
+          'detectedLanguages',
+          'addressComponents',
           'confidenceMap',
           'rawText',
           'words',
